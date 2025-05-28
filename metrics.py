@@ -8,7 +8,8 @@
 #
 # For inquiries contact  george.drettakis@inria.fr
 #
-
+from utils.system_utils import autoChooseCudaDevice
+autoChooseCudaDevice()
 from pathlib import Path
 import os
 from PIL import Image
