@@ -20,25 +20,6 @@ WARNED = False
 def loadCam(args, id, cam_info, resolution_scale, is_nerf_synthetic, is_test_dataset):
     image = Image.open(cam_info.image_path)
 
-    if cam_info.depth_path != "":
-        try:
-            if is_nerf_synthetic:
-                invdepthmap = cv2.imread(cam_info.depth_path, -1).astype(np.float32) / 512
-            else:
-                invdepthmap = cv2.imread(cam_info.depth_path, -1).astype(np.float32) / float(2**16)
-
-        except FileNotFoundError:
-            print(f"Error: The depth file at path '{cam_info.depth_path}' was not found.")
-            raise
-        except IOError:
-            print(f"Error: Unable to open the image file '{cam_info.depth_path}'. It may be corrupted or an unsupported format.")
-            raise
-        except Exception as e:
-            print(f"An unexpected error occurred when trying to read depth at {cam_info.depth_path}: {e}")
-            raise
-    else:
-        invdepthmap = None
-        
     orig_w, orig_h = image.size
     if args.resolution in [1, 2, 4, 8]:
         resolution = round(orig_w/(resolution_scale * args.resolution)), round(orig_h/(resolution_scale * args.resolution))
@@ -62,7 +43,7 @@ def loadCam(args, id, cam_info, resolution_scale, is_nerf_synthetic, is_test_dat
 
     return Camera(resolution, colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T, 
                   FoVx=cam_info.FovX, FoVy=cam_info.FovY, depth_params=cam_info.depth_params,
-                  image=image, invdepthmap=invdepthmap,
+                  image=image, invdepthmap_path=cam_info.depth_path,
                   image_name=cam_info.image_name, uid=id, data_device=args.data_device,
                   train_test_exp=args.train_test_exp, is_test_dataset=is_test_dataset, is_test_view=cam_info.is_test)
 

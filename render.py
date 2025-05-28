@@ -37,8 +37,6 @@ def test_FPS(model_path, name, iteration, views, gaussians, pipeline, background
     t_list_len = 1000
     t_list = np.array([1.0] * t_list_len)
     step = 0
-    mesh_img = torch.zeros((3, 1326, 1988), device="cuda")
-    mesh_depth = torch.ones((1, 1326, 1988), device="cuda").mul_(9999)
     while True:
         for view in views:
             step += 1
