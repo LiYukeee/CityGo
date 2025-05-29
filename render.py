@@ -71,6 +71,31 @@ def render_set(args, model_path, name, iteration, views, gaussians, pipeline, ba
         torchvision.utils.save_image(rendering, os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
         torchvision.utils.save_image(gt, os.path.join(gts_path, '{0:05d}'.format(idx) + ".png"))
 
+def render_video(args, model_path, name, iteration, views, gaussians, pipeline, background, train_test_exp, separate_sh):
+    n_fames = args.n_frames
+    fps = 30
+    height = views[0].image_height
+    width = views[0].image_width
+    traj_dir = os.path.join(args.model_path, 'traj', "ours_{}".format(iteration))
+    os.makedirs(traj_dir, exist_ok=True)
+    print(f"rendering video to {traj_dir}, n_frames={n_fames}, fps={fps}, height={height}, width={width}")
+    
+    from utils.render_utils import generate_path
+    import cv2
+    cam_traj = generate_path(views, n_frames=n_fames)
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    video = cv2.VideoWriter(os.path.join(traj_dir, "render_traj_color.mp4"), fourcc, fps, (width, height))
+    
+    for view in tqdm(cam_traj, desc="Rendering video"):
+        rendering = render(view, gaussians, pipeline, background, use_trained_exp=train_test_exp, separate_sh=separate_sh, render_mode=args.render_mode)["render"]
+        frame = rendering.cpu().permute(1, 2, 0).numpy()
+        frame = (frame * 255).astype(np.uint8)
+        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        video.write(frame_bgr)
+    video.release()
+    
+    
+    
 def render_sets(args, dataset : ModelParams, pipeline : PipelineParams, separate_sh: bool):
     iteration = args.iteration
     skip_train = args.skip_train
@@ -82,11 +107,14 @@ def render_sets(args, dataset : ModelParams, pipeline : PipelineParams, separate
         bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
         background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
+        if args.video:
+            render_video(args, dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, dataset.train_test_exp, separate_sh)
+
         if not skip_train:
-             render_set(args, dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, dataset.train_test_exp, separate_sh)
+            render_set(args, dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, dataset.train_test_exp, separate_sh)
 
         if not skip_test:
-             render_set(args, dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background, dataset.train_test_exp, separate_sh)
+            render_set(args, dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background, dataset.train_test_exp, separate_sh)
         test_FPS(args, dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, dataset.train_test_exp, separate_sh)
 
 if __name__ == "__main__":
@@ -99,6 +127,8 @@ if __name__ == "__main__":
     parser.add_argument("--skip_test", action="store_true")
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--render_mode", default="hybrid", type=str)
+    parser.add_argument("--video", action="store_true")
+    parser.add_argument("--n_frames", default=300, type=int)
     args = get_combined_args(parser)
     print("Rendering " + args.model_path)
 

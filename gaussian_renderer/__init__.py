@@ -42,7 +42,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
             }
     elif render_mode == "gs":
         mesh_img = torch.zeros((3, viewpoint_camera.image_height, viewpoint_camera.image_width), device="cuda")
-        mesh_depth = torch.full((1, viewpoint_camera.image_height, viewpoint_camera.image_width), 2**16, device="cuda")
+        mesh_depth = torch.full((1, viewpoint_camera.image_height, viewpoint_camera.image_width), torch.finfo(torch.float32).max, device="cuda", dtype=torch.float32)
     else:
         raise ValueError(f"Unknown render mode: {render_mode}. Supported modes: 'hybrid', 'mesh', 'gs'.")
 
