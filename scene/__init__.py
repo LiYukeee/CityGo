@@ -22,10 +22,11 @@ class Scene:
 
     gaussians : GaussianModel
 
-    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0]):
+    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0], ply_path=""):
         """b
         :param path: Path to colmap scene main folder.
         """
+        self.ply_path = ply_path
         self.model_path = args.model_path
         self.loaded_iter = None
         self.gaussians = gaussians
@@ -80,7 +81,10 @@ class Scene:
                                                            "iteration_" + str(self.loaded_iter),
                                                            "point_cloud.ply"), args.train_test_exp)
         else:
-            self.gaussians.create_from_pcd(scene_info.point_cloud, scene_info.train_cameras, self.cameras_extent)
+            if self.ply_path != "":
+                self.gaussians.load_ply(self.ply_path, cam_infos=scene_info.train_cameras, spatial_lr_scale=self.cameras_extent)
+            else:
+                self.gaussians.create_from_pcd(scene_info.point_cloud, scene_info.train_cameras, self.cameras_extent)
 
     def save(self, iteration):
         point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))

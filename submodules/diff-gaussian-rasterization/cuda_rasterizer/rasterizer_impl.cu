@@ -175,6 +175,7 @@ CudaRasterizer::ImageState CudaRasterizer::ImageState::fromChunk(char*& chunk, s
 	obtain(chunk, img.accum_alpha, N, 128);
 	obtain(chunk, img.n_contrib, N, 128);
 	obtain(chunk, img.ranges, N, 128);
+	obtain(chunk, img.first_gs_id, N, 128);
 	return img;
 }
 
@@ -196,6 +197,8 @@ CudaRasterizer::BinningState CudaRasterizer::BinningState::fromChunk(char*& chun
 // Forward rendering procedure for differentiable rasterization
 // of Gaussians.
 int CudaRasterizer::Rasterizer::forward(
+	const float depth_tolerance,
+	const float* mesh_depth,
 	std::function<char* (size_t)> geometryBuffer,
 	std::function<char* (size_t)> binningBuffer,
 	std::function<char* (size_t)> imageBuffer,
@@ -216,6 +219,7 @@ int CudaRasterizer::Rasterizer::forward(
 	const float tan_fovx, float tan_fovy,
 	const bool prefiltered,
 	float* out_color,
+	float* out_depth,
 	float* depth,
 	bool antialiasing,
 	int* radii,
@@ -323,6 +327,8 @@ int CudaRasterizer::Rasterizer::forward(
 	// Let each tile blend its range of Gaussians independently in parallel
 	const float* feature_ptr = colors_precomp != nullptr ? colors_precomp : geomState.rgb;
 	CHECK_CUDA(FORWARD::render(
+		depth_tolerance,
+		mesh_depth,
 		tile_grid, block,
 		imgState.ranges,
 		binningState.point_list,
@@ -332,8 +338,10 @@ int CudaRasterizer::Rasterizer::forward(
 		geomState.conic_opacity,
 		imgState.accum_alpha,
 		imgState.n_contrib,
+		imgState.first_gs_id,
 		background,
 		out_color,
+		out_depth,
 		geomState.depths,
 		depth), debug)
 
@@ -409,6 +417,7 @@ void CudaRasterizer::Rasterizer::backward(
 		geomState.depths,
 		imgState.accum_alpha,
 		imgState.n_contrib,
+		imgState.first_gs_id,
 		dL_dpix,
 		dL_invdepths,
 		(float3*)dL_dmean2D,

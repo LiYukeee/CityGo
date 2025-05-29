@@ -8,3 +8,5 @@ tensorboard_3d
 screenshots
 
 outputs
+__pycache__
+temp.png

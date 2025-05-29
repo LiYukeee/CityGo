@@ -274,6 +274,8 @@ __global__ void preprocessCUDA(int P, int D, int M,
 template <uint32_t CHANNELS>
 __global__ void __launch_bounds__(BLOCK_X * BLOCK_Y)
 renderCUDA(
+	const float depth_tolerance,
+	const float* __restrict__ mesh_depth,
 	const uint2* __restrict__ ranges,
 	const uint32_t* __restrict__ point_list,
 	int W, int H,
@@ -282,8 +284,10 @@ renderCUDA(
 	const float4* __restrict__ conic_opacity,
 	float* __restrict__ final_T,
 	uint32_t* __restrict__ n_contrib,
+	int* __restrict__ first_gs_id,
 	const float* __restrict__ bg_color,
 	float* __restrict__ out_color,
+	float* __restrict__ out_depth,
 	const float* __restrict__ depths,
 	float* __restrict__ invdepth)
 {
@@ -316,9 +320,24 @@ renderCUDA(
 	uint32_t contributor = 0;
 	uint32_t last_contributor = 0;
 	float C[CHANNELS] = { 0 };
+	float out_depth_ = 0.0f;
 
 	float expected_invdepth = 0.0f;
 
+	float max_depth, min_depth;
+	float this_pixel_depth;
+	if (inside){
+		this_pixel_depth = mesh_depth[pix_id];
+		if (this_pixel_depth > 0){
+			max_depth = this_pixel_depth + depth_tolerance;
+			min_depth = this_pixel_depth - depth_tolerance;
+		}else{
+			max_depth = FLT_MAX;
+		}
+		first_gs_id[pix_id] = 0;
+		// max_depth < 0 means: This beam of light does not require rendering GS
+	}
+	bool first_gs = true;
 	// Iterate over batches until all done or range is complete
 	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
 	{
@@ -343,6 +362,13 @@ renderCUDA(
 		{
 			// Keep track of current position in range
 			contributor++;
+			float gs_depth = depths[collected_id[j]];
+			// if (gs_depth < min_depth)
+			// 	continue;
+			if (gs_depth > max_depth){
+				done = true;
+				continue;
+			}
 
 			// Resample using conic matrix (cf. "Surface 
 			// Splatting" by Zwicker et al., 2001)
@@ -372,8 +398,13 @@ renderCUDA(
 				C[ch] += features[collected_id[j] * CHANNELS + ch] * alpha * T;
 
 			if(invdepth)
-			expected_invdepth += (1 / depths[collected_id[j]]) * alpha * T;
+				if (first_gs){
+					first_gs_id[pix_id] = collected_id[j];
+					expected_invdepth = (1 / depths[collected_id[j]]);
+					first_gs = false;
+				}
 
+			out_depth_ += depths[collected_id[j]] * alpha * T;
 			T = test_T;
 
 			// Keep track of last range entry to update this
@@ -389,14 +420,22 @@ renderCUDA(
 		final_T[pix_id] = T;
 		n_contrib[pix_id] = last_contributor;
 		for (int ch = 0; ch < CHANNELS; ch++)
-			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
+			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch * H * W + pix_id];
 
 		if (invdepth)
-		invdepth[pix_id] = expected_invdepth;// 1. / (expected_depth + T * 1e3);
+		if (this_pixel_depth > 0.0f){
+			invdepth[pix_id] = expected_invdepth;// 1. / (expected_depth + T * 1e3);
+			out_depth_ += this_pixel_depth * T;
+		}else{ // this_pixel_depth < 0, this pixel for no mesh render result
+			invdepth[pix_id] = expected_invdepth;// 1. / (expected_depth + T * 1e3);
+		}
+		out_depth[pix_id] = out_depth_;
 	}
 }
 
 void FORWARD::render(
+	const float depth_tolerance,
+	const float* mesh_depth,
 	const dim3 grid, dim3 block,
 	const uint2* ranges,
 	const uint32_t* point_list,
@@ -406,12 +445,16 @@ void FORWARD::render(
 	const float4* conic_opacity,
 	float* final_T,
 	uint32_t* n_contrib,
+	int* first_gs_id,
 	const float* bg_color,
 	float* out_color,
+	float* out_depth,
 	float* depths,
 	float* depth)
 {
 	renderCUDA<NUM_CHANNELS> << <grid, block >> > (
+		depth_tolerance,
+		mesh_depth,
 		ranges,
 		point_list,
 		W, H,
@@ -420,8 +463,10 @@ void FORWARD::render(
 		conic_opacity,
 		final_T,
 		n_contrib,
+		first_gs_id,
 		bg_color,
 		out_color,
+		out_depth,
 		depths, 
 		depth);
 }

@@ -46,16 +46,21 @@ class ParamGroup:
 
 class ModelParams(ParamGroup): 
     def __init__(self, parser, sentinel=False):
-        self.sh_degree = 3
+        self.sh_degree = 2#modify
         self._source_path = ""
         self._model_path = ""
         self._images = "images"
         self._depths = ""
-        self._resolution = -1
+        self._resolution = 1#modify
         self._white_background = False
         self.train_test_exp = False
         self.data_device = "cuda"
         self.eval = False
+        
+        # add parameters for mesh
+        self.ply_path = ""
+        self.mesh_path = ""
+        self.depth_tolerance = 5.0
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):
@@ -74,8 +79,8 @@ class PipelineParams(ParamGroup):
 class OptimizationParams(ParamGroup):
     def __init__(self, parser):
         self.iterations = 30_000
-        self.position_lr_init = 0.00016
-        self.position_lr_final = 0.0000016
+        self.position_lr_init = 0.0000016#modify
+        self.position_lr_final = 0.000000016#modify
         self.position_lr_delay_mult = 0.01
         self.position_lr_max_steps = 30_000
         self.feature_lr = 0.0025
@@ -87,11 +92,11 @@ class OptimizationParams(ParamGroup):
         self.exposure_lr_delay_steps = 0
         self.exposure_lr_delay_mult = 0.0
         self.percent_dense = 0.01
-        self.lambda_dssim = 0.2
-        self.densification_interval = 100
-        self.opacity_reset_interval = 3000
+        self.lambda_dssim = 0.1#modify
+        self.densification_interval = 500#modify
+        self.opacity_reset_interval = 6000#modify
         self.densify_from_iter = 500
-        self.densify_until_iter = 15_000
+        self.densify_until_iter = 30_000#modify
         self.densify_grad_threshold = 0.0002
         self.depth_l1_weight_init = 1.0
         self.depth_l1_weight_final = 0.01

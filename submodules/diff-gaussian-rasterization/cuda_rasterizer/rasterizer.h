@@ -29,6 +29,8 @@ namespace CudaRasterizer
 			bool* present);
 
 		static int forward(
+			const float depth_tolerance,
+			const float* mesh_depth,
 			std::function<char* (size_t)> geometryBuffer,
 			std::function<char* (size_t)> binningBuffer,
 			std::function<char* (size_t)> imageBuffer,
@@ -49,6 +51,7 @@ namespace CudaRasterizer
 			const float tan_fovx, float tan_fovy,
 			const bool prefiltered,
 			float* out_color,
+			float* out_depth,
 			float* depth,
 			bool antialiasing,
 			int* radii = nullptr,

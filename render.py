@@ -29,7 +29,7 @@ try:
 except:
     SPARSE_ADAM_AVAILABLE = False
 
-def test_FPS(model_path, name, iteration, views, gaussians, pipeline, background, train_test_exp, separate_sh):
+def test_FPS(args, model_path, name, iteration, views, gaussians, pipeline, background, train_test_exp, separate_sh):
     """
     input: Keep the same input parameters as render_set(...)
     output: the output is a more accurate FPS.
@@ -42,7 +42,7 @@ def test_FPS(model_path, name, iteration, views, gaussians, pipeline, background
             step += 1
             torch.cuda.synchronize();
             t0 = time.time()
-            rendering = render(view, gaussians, pipeline, background, use_trained_exp=train_test_exp, separate_sh=separate_sh)["render"]
+            rendering = render(view, gaussians, pipeline, background, use_trained_exp=train_test_exp, separate_sh=separate_sh, render_mode=args.render_mode)["render"]
             torch.cuda.synchronize();
             t1 = time.time()
             t_list[step % t_list_len] = t1 - t0
@@ -53,7 +53,7 @@ def test_FPS(model_path, name, iteration, views, gaussians, pipeline, background
             if step > t_list_len * 2:
                 return
     
-def render_set(model_path, name, iteration, views, gaussians, pipeline, background, train_test_exp, separate_sh):
+def render_set(args, model_path, name, iteration, views, gaussians, pipeline, background, train_test_exp, separate_sh):
     render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
     gts_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt")
 
@@ -61,7 +61,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     makedirs(gts_path, exist_ok=True)
 
     for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
-        rendering = render(view, gaussians, pipeline, background, use_trained_exp=train_test_exp, separate_sh=separate_sh)["render"]
+        rendering = render(view, gaussians, pipeline, background, use_trained_exp=train_test_exp, separate_sh=separate_sh, render_mode=args.render_mode)["render"]
         gt = view.original_image[0:3, :, :]
 
         if args.train_test_exp:
@@ -76,18 +76,18 @@ def render_sets(args, dataset : ModelParams, pipeline : PipelineParams, separate
     skip_train = args.skip_train
     skip_test = args.skip_test
     with torch.no_grad():
-        gaussians = GaussianModel(dataset.sh_degree)
-        scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False)
+        gaussians = GaussianModel(dataset.sh_degree, dataset.depth_tolerance, mesh_path=dataset.mesh_path)
+        scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False, ply_path=dataset.ply_path)
 
         bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
         background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
         if not skip_train:
-             render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, dataset.train_test_exp, separate_sh)
+             render_set(args, dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, dataset.train_test_exp, separate_sh)
 
         if not skip_test:
-             render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background, dataset.train_test_exp, separate_sh)
-        test_FPS(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, dataset.train_test_exp, separate_sh)
+             render_set(args, dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background, dataset.train_test_exp, separate_sh)
+        test_FPS(args, dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, dataset.train_test_exp, separate_sh)
 
 if __name__ == "__main__":
     # Set up command line argument parser
@@ -98,6 +98,7 @@ if __name__ == "__main__":
     parser.add_argument("--skip_train", action="store_true")
     parser.add_argument("--skip_test", action="store_true")
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--render_mode", default="hybrid", type=str)
     args = get_combined_args(parser)
     print("Rendering " + args.model_path)
 

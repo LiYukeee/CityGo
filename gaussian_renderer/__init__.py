@@ -15,13 +15,37 @@ from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianR
 from scene.gaussian_model import GaussianModel
 from utils.sh_utils import eval_sh
 
-def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, separate_sh = False, override_color = None, use_trained_exp=False):
+def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, separate_sh = False, override_color = None, use_trained_exp=False, render_mode="hybrid"):
     """
     Render the scene. 
     
     Background tensor (bg_color) must be on GPU!
     """
  
+ 
+    """
+    The render mode:
+        - "hybrid": render Gaussians and meshes together, using the mesh as a background
+        - "mesh": render only the mesh, no Gaussians
+        - "gs": render Gaussians only, no mesh
+    """
+    if render_mode == "hybrid" or render_mode == "mesh":
+        with torch.no_grad():
+            mesh_img, mesh_depth = pc.mesh.render(viewpoint_camera)
+        if render_mode == "mesh":
+            # The `render_mode = "mesh"` can only be used in rendering. 
+            # If used during the training process of gs, it will cause training errors.
+            return {
+                "render": mesh_img,
+                "mesh_img": mesh_img,
+                "mesh_depth": mesh_depth,
+            }
+    elif render_mode == "gs":
+        mesh_img = torch.zeros((3, viewpoint_camera.image_height, viewpoint_camera.image_width), device="cuda")
+        mesh_depth = torch.full((1, viewpoint_camera.image_height, viewpoint_camera.image_width), 2**16, device="cuda")
+    else:
+        raise ValueError(f"Unknown render mode: {render_mode}. Supported modes: 'hybrid', 'mesh', 'gs'.")
+
     # Create zero tensor. We will use it to make pytorch return gradients of the 2D (screen-space) means
     screenspace_points = torch.zeros_like(pc.get_xyz, dtype=pc.get_xyz.dtype, requires_grad=True, device="cuda") + 0
     try:
@@ -38,7 +62,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         image_width=int(viewpoint_camera.image_width),
         tanfovx=tanfovx,
         tanfovy=tanfovy,
-        bg=bg_color,
+        bg=mesh_img,
         scale_modifier=scaling_modifier,
         viewmatrix=viewpoint_camera.world_view_transform,
         projmatrix=viewpoint_camera.full_proj_transform,
@@ -88,7 +112,9 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
     if separate_sh:
-        rendered_image, radii, depth_image = rasterizer(
+        rendered_image, radii, rendered_depth, depth_image = rasterizer(
+            depth_tolerance = pc.depth_tolerance,
+            mesh_depth = mesh_depth,
             means3D = means3D,
             means2D = means2D,
             dc = dc,
@@ -99,7 +125,9 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
             rotations = rotations,
             cov3D_precomp = cov3D_precomp)
     else:
-        rendered_image, radii, depth_image = rasterizer(
+        rendered_image, radii, rendered_depth, depth_image = rasterizer(
+            depth_tolerance = pc.depth_tolerance,
+            mesh_depth = mesh_depth,
             means3D = means3D,
             means2D = means2D,
             shs = shs,
@@ -119,10 +147,13 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     rendered_image = rendered_image.clamp(0, 1)
     out = {
         "render": rendered_image,
+        "rendered_depth": rendered_depth,  # depth
         "viewspace_points": screenspace_points,
         "visibility_filter" : (radii > 0).nonzero(),
         "radii": radii,
-        "depth" : depth_image
+        "depth" : depth_image,  # invdepth
+        "mesh_img": mesh_img,
+        "mesh_depth": mesh_depth,
         }
     
     return out

@@ -21,6 +21,7 @@ from utils.sh_utils import RGB2SH
 from simple_knn._C import distCUDA2
 from utils.graphics_utils import BasicPointCloud
 from utils.general_utils import strip_symmetric, build_scaling_rotation
+from scene.mesh_model import MeshRender
 
 try:
     from diff_gaussian_rasterization import SparseGaussianAdam
@@ -46,8 +47,11 @@ class GaussianModel:
 
         self.rotation_activation = torch.nn.functional.normalize
 
+        print("load mesh at: {}".format(self.mesh_path))
+        self.mesh = MeshRender(self.mesh_path)
 
-    def __init__(self, sh_degree, optimizer_type="default"):
+
+    def __init__(self, sh_degree, optimizer_type="default", depth_tolerance=5.0, mesh_path=""):
         self.active_sh_degree = 0
         self.optimizer_type = optimizer_type
         self.max_sh_degree = sh_degree  
@@ -63,6 +67,8 @@ class GaussianModel:
         self.optimizer = None
         self.percent_dense = 0
         self.spatial_lr_scale = 0
+        self.mesh_path = mesh_path
+        self.depth_tolerance = depth_tolerance
         self.setup_functions()
 
     def capture(self):
@@ -260,7 +266,7 @@ class GaussianModel:
         optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
         self._opacity = optimizable_tensors["opacity"]
 
-    def load_ply(self, path, use_train_test_exp = False):
+    def load_ply(self, path, use_train_test_exp = False, cam_infos = None, spatial_lr_scale = None):
         plydata = PlyData.read(path)
         if use_train_test_exp:
             exposure_file = os.path.join(os.path.dirname(path), os.pardir, os.pardir, "exposure.json")
@@ -312,6 +318,14 @@ class GaussianModel:
         self._rotation = nn.Parameter(torch.tensor(rots, dtype=torch.float, device="cuda").requires_grad_(True))
 
         self.active_sh_degree = self.max_sh_degree
+        
+        # something necessary for trainning
+        if cam_infos and spatial_lr_scale:
+            self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
+            self.exposure_mapping = {cam_info.image_name: idx for idx, cam_info in enumerate(cam_infos)}
+            self.pretrained_exposures = None
+            exposure = torch.eye(3, 4, device="cuda")[None].repeat(len(cam_infos), 1, 1)
+            self._exposure = nn.Parameter(exposure.requires_grad_(True))
 
     def replace_tensor_to_optimizer(self, tensor, name):
         optimizable_tensors = {}

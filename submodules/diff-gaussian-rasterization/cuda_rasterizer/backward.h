@@ -32,6 +32,7 @@ namespace BACKWARD
 		const float* depths,
 		const float* final_Ts,
 		const uint32_t* n_contrib,
+		const int* first_gs_id,
 		const float* dL_dpixels,
 		const float* dL_invdepths,
 		float3* dL_dmean2D,

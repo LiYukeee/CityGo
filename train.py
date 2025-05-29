@@ -48,8 +48,8 @@ def training(logger, dataset, opt, pipe, testing_iterations, saving_iterations, 
 
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
-    gaussians = GaussianModel(dataset.sh_degree, opt.optimizer_type)
-    scene = Scene(dataset, gaussians)
+    gaussians = GaussianModel(dataset.sh_degree, opt.optimizer_type, dataset.depth_tolerance, mesh_path=dataset.mesh_path)
+    scene = Scene(dataset, gaussians, ply_path=dataset.ply_path)
     gaussians.training_setup(opt)
     if checkpoint:
         (model_params, first_iter) = torch.load(checkpoint)
@@ -112,6 +112,7 @@ def training(logger, dataset, opt, pipe, testing_iterations, saving_iterations, 
         # MARK: Render
         render_pkg = render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=dataset.train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
+        mesh_img, mesh_depth = render_pkg["mesh_img"], render_pkg["mesh_depth"]
 
         if viewpoint_cam.alpha_mask is not None:
             alpha_mask = viewpoint_cam.alpha_mask.cuda()
@@ -224,7 +225,7 @@ def training_report(logger, tb_writer, iteration, Ll1, loss, l1_loss, elapsed, t
         torch.cuda.empty_cache()
         validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
                               {'name': 'train', 'cameras' : [scene.getTrainCameras()[idx % len(scene.getTrainCameras())] for idx in range(5, 30, 5)]})
-
+        logger.info("\n[ITER {}] : total_points {} M".format(iteration, round(scene.gaussians.get_xyz.shape[0]/1000000, 3)))
         for config in validation_configs:
             if config['cameras'] and len(config['cameras']) > 0:
                 l1_test = 0.0

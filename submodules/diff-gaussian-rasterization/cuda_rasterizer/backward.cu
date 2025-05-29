@@ -462,6 +462,7 @@ renderCUDA(
 	const float* __restrict__ depths,
 	const float* __restrict__ final_Ts,
 	const uint32_t* __restrict__ n_contrib,
+	const int* __restrict__ first_gs_id,
 	const float* __restrict__ dL_dpixels,
 	const float* __restrict__ dL_invdepths,
 	float3* __restrict__ dL_dmean2D,
@@ -571,6 +572,10 @@ renderCUDA(
 				continue;
 
 			T = T / (1.f - alpha);
+			// if (T > 0.999f){
+			// 	done = true;
+			// 	continue;
+			// }	
 			const float dchannel_dcolor = alpha * T;
 
 			// Propagate gradients to per-Gaussian colors and keep
@@ -594,13 +599,9 @@ renderCUDA(
 			}
 			// Propagate gradients from inverse depth to alphaas and
 			// per Gaussian inverse depths
-			if (dL_dinvdepths)
+			if (dL_dinvdepths && first_gs_id[pix_id] == global_id)
 			{
-			const float invd = 1.f / collected_depths[j];
-			accum_invdepth_rec = last_alpha * last_invdepth + (1.f - last_alpha) * accum_invdepth_rec;
-			last_invdepth = invd;
-			dL_dalpha += (invd - accum_invdepth_rec) * dL_invdepth;
-			atomicAdd(&(dL_dinvdepths[global_id]), dchannel_dcolor * dL_invdepth);
+			atomicAdd(&(dL_dinvdepths[global_id]), dL_invdepth);
 			}
 
 			dL_dalpha *= T;
@@ -611,7 +612,7 @@ renderCUDA(
 			// the background color is added if nothing left to blend
 			float bg_dot_dpixel = 0;
 			for (int i = 0; i < C; i++)
-				bg_dot_dpixel += bg_color[i] * dL_dpixel[i];
+				bg_dot_dpixel += bg_color[i * H * W + pix_id] * dL_dpixel[i];
 			dL_dalpha += (-T_final / (1.f - alpha)) * bg_dot_dpixel;
 
 
@@ -723,6 +724,7 @@ void BACKWARD::render(
 	const float* depths,
 	const float* final_Ts,
 	const uint32_t* n_contrib,
+	const int* first_gs_id,
 	const float* dL_dpixels,
 	const float* dL_invdepths,
 	float3* dL_dmean2D,
@@ -742,6 +744,7 @@ void BACKWARD::render(
 		depths,
 		final_Ts,
 		n_contrib,
+		first_gs_id,
 		dL_dpixels,
 		dL_invdepths,
 		dL_dmean2D,
