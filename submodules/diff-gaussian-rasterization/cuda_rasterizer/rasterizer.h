@@ -29,6 +29,8 @@ namespace CudaRasterizer
 			bool* present);
 
 		static int forward(
+			const float* error_image,
+			float* gs_score,
 			const float depth_tolerance,
 			const float* mesh_depth,
 			std::function<char* (size_t)> geometryBuffer,

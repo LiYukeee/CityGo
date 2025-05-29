@@ -197,6 +197,8 @@ CudaRasterizer::BinningState CudaRasterizer::BinningState::fromChunk(char*& chun
 // Forward rendering procedure for differentiable rasterization
 // of Gaussians.
 int CudaRasterizer::Rasterizer::forward(
+	const float* error_image,
+	float* gs_score,
 	const float depth_tolerance,
 	const float* mesh_depth,
 	std::function<char* (size_t)> geometryBuffer,
@@ -327,6 +329,8 @@ int CudaRasterizer::Rasterizer::forward(
 	// Let each tile blend its range of Gaussians independently in parallel
 	const float* feature_ptr = colors_precomp != nullptr ? colors_precomp : geomState.rgb;
 	CHECK_CUDA(FORWARD::render(
+		error_image,
+		gs_score,
 		depth_tolerance,
 		mesh_depth,
 		tile_grid, block,

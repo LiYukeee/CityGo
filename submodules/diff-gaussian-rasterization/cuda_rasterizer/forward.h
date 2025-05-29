@@ -50,6 +50,8 @@ namespace FORWARD
 
 	// Main rasterization method.
 	void render(
+		const float* error_image,
+		float* gs_score,
 		const float depth_tolerance,
 		const float* mesh_depth,
 		const dim3 grid, dim3 block,

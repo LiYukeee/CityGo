@@ -30,6 +30,8 @@ def rasterize_gaussians(
     rotations,
     cov3Ds_precomp,
     raster_settings,
+    error_image,
+    gs_score,
 ):
     return _RasterizeGaussians.apply(
         depth_tolerance,
@@ -43,6 +45,8 @@ def rasterize_gaussians(
         rotations,
         cov3Ds_precomp,
         raster_settings,
+        error_image,
+        gs_score,
     )
 
 class _RasterizeGaussians(torch.autograd.Function):
@@ -60,10 +64,14 @@ class _RasterizeGaussians(torch.autograd.Function):
         rotations,
         cov3Ds_precomp,
         raster_settings,
+        error_image,
+        gs_score,
     ):
 
         # Restructure arguments the way that the C++ lib expects them
         args = (
+            error_image,
+            gs_score,
             depth_tolerance,
             mesh_depth,
             raster_settings.bg, 
@@ -164,6 +172,8 @@ class _RasterizeGaussians(torch.autograd.Function):
             grad_rotations,
             grad_cov3Ds_precomp,
             None,
+            None,
+            None,
         )
 
         return grads
@@ -199,7 +209,7 @@ class GaussianRasterizer(nn.Module):
             
         return visible
 
-    def forward(self, depth_tolerance, mesh_depth, means3D, means2D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, cov3D_precomp = None):
+    def forward(self, depth_tolerance, mesh_depth, means3D, means2D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, cov3D_precomp = None, error_image = None, gs_score = None):
         
         raster_settings = self.raster_settings
 
@@ -220,6 +230,10 @@ class GaussianRasterizer(nn.Module):
             rotations = torch.Tensor([])
         if cov3D_precomp is None:
             cov3D_precomp = torch.Tensor([])
+        if error_image is None:
+            error_image = torch.Tensor([])
+        if gs_score is None:
+            gs_score = torch.Tensor([])
 
         # Invoke C++/CUDA rasterization routine
         return rasterize_gaussians(
@@ -234,5 +248,7 @@ class GaussianRasterizer(nn.Module):
             rotations,
             cov3D_precomp,
             raster_settings, 
+            error_image,
+            gs_score,
         )
 

@@ -17,6 +17,8 @@
 	
 std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 RasterizeGaussiansCUDA(
+	const torch::Tensor& error_image,
+	torch::Tensor& gs_score,
 	const float depth_tolerance,
 	const torch::Tensor& mesh_depth,
 	const torch::Tensor& background,
