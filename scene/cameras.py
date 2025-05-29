@@ -119,6 +119,9 @@ class Camera(nn.Module):
     @property
     def original_image(self):
         if self.data_device == "disk":
+            # The image is not read entirely from the disk; 
+            # instead, the source file of the image is stored in memory, 
+            # and the image is decoded only when needed. This approach is very memory-efficient.
             image = self.image
             return PILtoTorch(image, image.size)[:3, ...]
         else:
