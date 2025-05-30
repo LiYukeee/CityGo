@@ -127,8 +127,8 @@ def record_gs_score(args, dataset, opt, pipe):
     gs_score = torch.zeros((gaussians.get_xyz.shape[0], 1), device="cuda", dtype=torch.float32)
     for iteration in range(first_iter, len(viewpoint_stack) + 1):
 
-        if iteration % 10 == 0:
-            progress_bar.update(10)
+        if iteration % 100 == 0:
+            progress_bar.update(100)
 
         viewpoint_cam = viewpoint_stack[iteration-1]
 

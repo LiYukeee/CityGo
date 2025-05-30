@@ -46,7 +46,7 @@ def training(logger, dataset, opt, pipe, testing_iterations, saving_iterations, 
     if not SPARSE_ADAM_AVAILABLE and opt.optimizer_type == "sparse_adam":
         sys.exit(f"Trying to use sparse adam but it is not installed, please install the correct rasterizer using pip install [3dgs_accel].")
 
-    first_iter = 0
+    first_iter = opt.start_iterations
     tb_writer = prepare_output_and_logger(dataset)
     gaussians = GaussianModel(dataset.sh_degree, opt.optimizer_type, dataset.depth_tolerance, mesh_path=dataset.mesh_path)
     scene = Scene(dataset, gaussians, ply_path=dataset.ply_path)
@@ -71,7 +71,8 @@ def training(logger, dataset, opt, pipe, testing_iterations, saving_iterations, 
 
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
-    for iteration in range(first_iter, opt.iterations + 1):
+    iteration = first_iter
+    while iteration < (opt.iterations + 1):
         if network_gui.conn == None:
             network_gui.try_connect()
         while network_gui.conn != None:
@@ -110,6 +111,11 @@ def training(logger, dataset, opt, pipe, testing_iterations, saving_iterations, 
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
         # MARK: Render
+        with torch.no_grad():
+            mesh_img, mesh_depth_img = gaussians.mesh.render(viewpoint_cam)
+            # if the mesh render result is all balck, which means mesh did not show in this view, we skip this iter
+            if (mesh_depth_img > 0).sum() < viewpoint_cam.image_width * viewpoint_cam.image_height / 8:
+                continue
         render_pkg = render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=dataset.train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
         mesh_img, mesh_depth = render_pkg["mesh_img"], render_pkg["mesh_depth"]
@@ -133,9 +139,9 @@ def training(logger, dataset, opt, pipe, testing_iterations, saving_iterations, 
         if depth_l1_weight(iteration) > 0 and viewpoint_cam.depth_reliable:
             invDepth = render_pkg["depth"]
             mono_invdepth = viewpoint_cam.invdepthmap.cuda()
-            depth_mask = viewpoint_cam.depth_mask.cuda()
+            # depth_mask = viewpoint_cam.depth_mask.cuda()
 
-            Ll1depth_pure = torch.abs((invDepth  - mono_invdepth) * depth_mask).mean()
+            Ll1depth_pure = torch.abs((invDepth  - mono_invdepth)).mean()
             Ll1depth = depth_l1_weight(iteration) * Ll1depth_pure 
             loss += Ll1depth
             Ll1depth = Ll1depth.item()
@@ -151,9 +157,9 @@ def training(logger, dataset, opt, pipe, testing_iterations, saving_iterations, 
             ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log
             ema_Ll1depth_for_log = 0.4 * Ll1depth + 0.6 * ema_Ll1depth_for_log
 
-            if iteration % 10 == 0:
+            if iteration % 1000 == 0:
                 progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}", "Depth Loss": f"{ema_Ll1depth_for_log:.{7}f}"})
-                progress_bar.update(10)
+                progress_bar.update(1000)
             if iteration == opt.iterations:
                 progress_bar.close()
 
@@ -191,6 +197,7 @@ def training(logger, dataset, opt, pipe, testing_iterations, saving_iterations, 
             if (iteration in checkpoint_iterations):
                 logger.info("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+        iteration += 1
 
 def prepare_output_and_logger(args):    
     if not args.model_path:
@@ -279,16 +286,19 @@ if __name__ == "__main__":
     op = OptimizationParams(parser)
     pp = PipelineParams(parser)
     parser.add_argument('--ip', type=str, default="127.0.0.1")
-    parser.add_argument('--port', type=int, default=6009)
+    parser.add_argument('--port', type=int, default=0)
     parser.add_argument('--debug_from', type=int, default=-1)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
-    parser.add_argument("--test_iterations", nargs="+", type=int, default=[7_000, 30_000])
-    parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 30_000])
+    parser.add_argument("--test_iterations", nargs="+", type=int, default=[-1])
+    parser.add_argument("--save_iterations", nargs="+", type=int, default=[-1])
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument('--disable_viewer', action='store_true', default=False)
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
     args = parser.parse_args(sys.argv[1:])
+    if args.test_iterations[0] == -1:
+        args.test_iterations = [i for i in range(10000, args.iterations + 1, 10000)]
+    args.test_iterations.append(args.iterations)
     args.save_iterations.append(args.iterations)
     
     # enable logging
