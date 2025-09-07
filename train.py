@@ -166,7 +166,8 @@ def training(logger, dataset, opt, pipe, testing_iterations, saving_iterations, 
             # Log and save
             training_report(logger, tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp)
             if (iteration in saving_iterations):
-                logger.info("\n[ITER {}] Saving Gaussians".format(iteration))
+                logger.info("[ITER {}] Saving Gaussians".format(iteration))
+                logger.info("[ITER {}] : total_points {} M".format(iteration, round(scene.gaussians.get_xyz.shape[0]/1000000, 3)))
                 scene.save(iteration)
 
             # Densification
@@ -195,7 +196,7 @@ def training(logger, dataset, opt, pipe, testing_iterations, saving_iterations, 
                     gaussians.optimizer.zero_grad(set_to_none = True)
 
             if (iteration in checkpoint_iterations):
-                logger.info("\n[ITER {}] Saving Checkpoint".format(iteration))
+                logger.info("[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
         iteration += 1
 
@@ -232,7 +233,7 @@ def training_report(logger, tb_writer, iteration, Ll1, loss, l1_loss, elapsed, t
         torch.cuda.empty_cache()
         validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
                               {'name': 'train', 'cameras' : [scene.getTrainCameras()[idx % len(scene.getTrainCameras())] for idx in range(5, 30, 5)]})
-        logger.info("\n[ITER {}] : total_points {} M".format(iteration, round(scene.gaussians.get_xyz.shape[0]/1000000, 3)))
+        logger.info("[ITER {}] : total_points {} M".format(iteration, round(scene.gaussians.get_xyz.shape[0]/1000000, 3)))
         for config in validation_configs:
             if config['cameras'] and len(config['cameras']) > 0:
                 l1_test = 0.0
@@ -251,7 +252,7 @@ def training_report(logger, tb_writer, iteration, Ll1, loss, l1_loss, elapsed, t
                     psnr_test += psnr(image, gt_image).mean().double()
                 psnr_test /= len(config['cameras'])
                 l1_test /= len(config['cameras'])          
-                logger.info("\n[ITER {}] Evaluating {}: L1 {} PSNR {}".format(iteration, config['name'], l1_test, psnr_test))
+                logger.info("[ITER {}] Evaluating {}: L1 {} PSNR {}".format(iteration, config['name'], l1_test, psnr_test))
                 if tb_writer:
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - l1_loss', l1_test, iteration)
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - psnr', psnr_test, iteration)
@@ -319,4 +320,4 @@ if __name__ == "__main__":
     training(logger, lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
 
     # All done
-    logger.info("\nTraining complete.")
+    logger.info("Training complete.")
