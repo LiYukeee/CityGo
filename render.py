@@ -34,9 +34,12 @@ def test_FPS(args, model_path, name, iteration, views, gaussians, pipeline, back
     input: Keep the same input parameters as render_set(...)
     output: the output is a more accurate FPS.
     """
-    t_list_len = 1000
+    t_list_len = 200
+    warmup_times = 5
+    test_times = 10
     t_list = np.array([1.0] * t_list_len)
     step = 0
+    fps_list = []
     while True:
         for view in views:
             step += 1
@@ -47,10 +50,16 @@ def test_FPS(args, model_path, name, iteration, views, gaussians, pipeline, back
             t1 = time.time()
             t_list[step % t_list_len] = t1 - t0
 
-            if step % 100 == 0 and step > t_list_len:
+            if step % t_list_len == 0 and step > t_list_len * warmup_times:
                 fps = 1.0 / t_list.mean()
                 print(f'Test FPS: \033[1;35m{fps:.5f}\033[0m')
-            if step > t_list_len * 2:
+                fps_list.append(fps)
+            if step > t_list_len * (test_times + warmup_times):
+                # write fps info to a txt file
+                with open(os.path.join(model_path, "point_cloud", "iteration_{}".format(iteration), "FPS.txt"), 'w') as f:
+                    f.write("Average FPS: {:.5f}\n".format(np.mean(fps_list)))
+                    f.write("FPS std: {:.5f}\n".format(np.std(fps_list)))
+                print("Average FPS: {:.5f}, FPS std: {:.5f}".format(np.mean(fps_list), np.std(fps_list)))
                 return
     
 def render_set(args, model_path, name, iteration, views, gaussians, pipeline, background, train_test_exp, separate_sh):
